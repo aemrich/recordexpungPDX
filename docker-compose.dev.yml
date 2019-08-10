@@ -1,19 +1,33 @@
-version: '3.1'
+version: '3.4'
 
 services:
-    expungeservice:
-        ports:
-            - "5000:5000"
-
-    webserver:
-        ports:
-            - "3000:3000"
-        ### uncomment these lines to disable the webserver in the docker stack.
-        ### This is useful if you'd rather run the npm server while developing frontend code.
-        #deploy:
-        #    replicas: 0
-
 
     db:
-        ports:
-            - "5432:5432"
+        build:
+            context: ./config/postgres
+            network: host
+        container_name: db
+        env_file:
+            - config/postgres/postgres.env
+        volumes:
+            - ./config/postgres/data:/var/lib/postgres/data
+        networks:
+            codepdxnet:
+                ipv4_address: 172.16.238.2
+      
+
+    # expungeservice:
+      
+
+    # webserver:
+    
+
+networks:
+    codepdxnet:
+        driver: bridge
+        ipam:
+            driver: default
+            config:
+                - subnet: 172.16.238.0/24
+        driver_opts:
+            com.docker.network.bridge.name: codepdxnet

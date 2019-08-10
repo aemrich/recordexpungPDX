@@ -15,8 +15,16 @@ DB_NAME := record_expunge
 DB_CONTAINER_NAME := db
 REQUIREMENTS_TXT := src/backend/expungeservice/requirements.txt
 
-dev: $(REQUIREMENTS_TXT) dev_deploy
+dev: dev_up
 	echo $@
+
+dev_up:
+	echo $@
+	docker-compose -f docker-compose.dev.yml up
+
+dev_down:
+	echo $@
+	docker-compose -f docker-compose.dev.yml down
 
 dev_deploy: $(IMAGES) dev_start
 	echo $@
