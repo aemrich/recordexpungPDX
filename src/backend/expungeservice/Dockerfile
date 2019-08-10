@@ -1,12 +1,15 @@
 FROM recordexpungpdx/recordexpungpdx:expungeservicebase
 
+RUN python3.7 -m pip install pipenv
 RUN mkdir -p /var/www/expungeservice
-COPY . /var/www/expungeservice
+
+COPY ./Pipfile ./Pipfile.lock ./setup.py /var/www/expungeservice/
 WORKDIR /var/www/expungeservice
-RUN python3.7 -m pip install -r requirements.txt && rm requirements.txt &&\
+RUN pipenv install --system --deploy &&\
     python3.7 -m setup install
+COPY . /var/www/expungeservice
 
 WORKDIR /var/www
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
-CMD ["uwsgi", "--http", "0.0.0.0:5000", "--module", "expungeservice.wsgi"]
+CMD ["uwsgi", "--py-autoreload", "1",  "--http", "0.0.0.0:5000", "--module", "expungeservice.wsgi"]

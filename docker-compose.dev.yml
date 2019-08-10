@@ -14,10 +14,22 @@ services:
         networks:
             codepdxnet:
                 ipv4_address: 172.16.238.2
-      
 
-    # expungeservice:
-      
+    expungeservice:
+        build:
+            context: ./src/backend/expungeservice
+            network: host
+        container_name: expungeservice
+        env_file:
+            - config/expungeservice/expungeservice.env
+        volumes:
+            - ./src/backend/expungeservice:/var/www/expungeservice
+        ports:
+            - "5000:5000"
+        networks:
+            codepdxnet:
+                ipv4_address: 172.16.238.3
+
 
     # webserver:
     

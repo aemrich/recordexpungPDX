@@ -26,6 +26,10 @@ dev_down:
 	echo $@
 	docker-compose -f docker-compose.dev.yml down
 
+dev_build:
+	echo @
+	docker-compose -f docker-compose.dev.yml build
+
 dev_deploy: $(IMAGES) dev_start
 	echo $@
 
