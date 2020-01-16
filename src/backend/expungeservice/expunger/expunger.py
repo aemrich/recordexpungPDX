@@ -2,11 +2,18 @@ from typing import Set, List, Iterator
 
 from more_itertools import flatten
 
+from more_itertools import padnone, take
+
+
 from expungeservice.expunger.analyzers.time_analyzer import TimeAnalyzer
 from expungeservice.expunger.charges_summarizer import ChargesSummarizer
 from expungeservice.models.charge import Charge
 from expungeservice.models.disposition import DispositionStatus
 from expungeservice.models.record import Record
+from datetime import date
+from dateutil.relativedelta import relativedelta
+
+from expungeservice.models.charge_types.felony_class_b import FelonyClassB
 
 
 class Expunger:
@@ -19,8 +26,36 @@ class Expunger:
 
     def __init__(self, record: Record):
         self.record = record
-        analyzable_charges = Expunger._without_skippable_charges(self.record.charges)
-        self.charges_with_summary = ChargesSummarizer.summarize(analyzable_charges)
+        self.analyzable_charges = Expunger._without_skippable_charges(self.record.charges) # remove unrecognizable from analyzable charges
+
+    @staticmethod
+    def _most_recent_dismissal(acquittals):
+        acquittals.sort(key=lambda charge: charge.date)
+        if acquittals and acquittals[-1].recent_acquittal():
+            return acquittals[-1]
+        else:
+            return None
+
+    @staticmethod
+    def _most_recent_convictions(recent_convictions):
+        recent_convictions.sort(key=lambda charge: charge.disposition.date, reverse=True)
+        first, second = take(2, padnone(recent_convictions))
+        if first and "violation" in first.level.lower():
+            return second
+        else:
+            return first
+
+    @staticmethod
+    def _categorize_charges(charges):
+        acquittals, convictions, unrecognized = [], [], []
+        for charge in charges:
+            if charge.acquitted():
+                acquittals.append(charge)
+            elif charge.convicted():
+                convictions.append(charge)
+            else:
+                unrecognized.append(charge)
+        return acquittals, convictions, unrecognized
 
     def run(self) -> bool:
         """
@@ -35,7 +70,39 @@ class Expunger:
                 f"All charges are ineligible because there is one or more open case: {case_numbers}. Open cases with valid dispositions are still included in time analysis. Otherwise they are ignored, so time analysis may be inaccurate for other charges."
             ]
         self.record.errors += self._build_disposition_errors(self.record.charges)
-        TimeAnalyzer.evaluate(self.charges_with_summary)
+
+        for charge in self.analyzable_charges:
+            charges = [c for c in self.analyzable_charges if c != charge]
+            acquittals, convictions, unrecognized = Expunger._categorize_charges(charges)
+            most_recent_dismissal = Expunger._most_recent_dismissal(acquittals)
+            most_recent_conviction = Expunger._most_recent_convictions(convictions)
+
+            if charge.convicted():
+                eligibility_date = charge.disposition.date + relativedelta(years=3)
+            elif charge.acquitted():
+                eligibility_date = most_recent_dismissal.disposition.date + relativedelta(years=3)
+            else:
+                raise ValueError("Charge should always be convicted or acquitted.")
+
+            if most_recent_conviction:
+                charge.eligibility_date = max(eligibility_date, most_recent_conviction.disposition.date + relativedelta(years=10))
+
+            if charge.disposition.status is DispositionStatus.NO_COMPLAINT:
+                eligibility_date = max(eligibility_date, charge.disposition.date + relativedelta(years=+1))
+
+            if charge.convicted() and isinstance(charge, FelonyClassB):
+                if TimeAnalyzer._calculate_has_subsequent_charge(charge, self.analyzable_charges):
+                    eligibility_date = charge.disposition.date + relativedelta(years=10) # type: ignore
+                else:
+                    eligibility_date = date.max
+
+        for case in self.record.cases:
+            convictions = [c for c in case.charges if c.convicted()]
+            if len(convictions) == 1:
+                for charge in case.charges:
+                    if charge.acquitted():
+                        charge.eligibility_date = convictions[0].eligibility_date
+
         return len(open_cases) == 0
 
     @staticmethod
